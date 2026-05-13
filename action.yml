@@ -45,7 +45,7 @@ runs:
       goarch="$(go env GOARCH)"
 
       # create unique directory for each run
-      cache_dir="${RUNNER_TEMP}/${{ github.action_repository }}"
+      cache_dir="${RUNNER_TEMP}/reconcilerio/go-install-action"
       mkdir -p "${cache_dir}"
       cache_dir="${cache_dir}/$(ls -1 "${cache_dir}" | wc -l)"
       mkdir -p "${cache_dir}"
@@ -71,21 +71,30 @@ runs:
       echo "Resolved module: ${normalized_module}@${normalized_version}"
 
       cache_key="reconcilerio/go-install-action--${package}@${normalized_version}--${goos}/${goarch}--${goversion}--${gotoolchain}"
+      echo "artifact-key=$(echo "${cache_key}" | tr '/' '-')" >> "${GITHUB_OUTPUT}"
       echo "cache-key=${cache_key}" >> "${GITHUB_OUTPUT}"
       echo "cache-dir=${cache_dir}" >> "${GITHUB_OUTPUT}"
       echo "normalized-version=${normalized_version}" >> "${GITHUB_OUTPUT}"
     shell: bash
     working-directory: ${{ inputs.working-directory }}
+  - name: Check workflow cache
+    id: workflow-cache
+    if: inputs.cache-enabled != 'false'
+    uses: actions/download-artifact@v8
+    with:
+      name: "${{ steps.prep.outputs.artifact-key }}"
+      path: "${{ steps.prep.outputs.cache-dir }}"
+    continue-on-error: true
   - name: Cache
     id: cache
-    if: inputs.cache-enabled != 'false'
+    if: inputs.cache-enabled != 'false' && steps.workflow-cache.outcome != 'success'
     uses: actions/cache@v5
     with:
       key: "${{ steps.prep.outputs.cache-key }}"
       path: "${{ steps.prep.outputs.cache-dir }}"
   - name: Build
     id: build
-    if: steps.cache.outputs.cache-hit == ''
+    if: steps.cache.outputs.cache-hit == '' && steps.workflow-cache.outcome != 'success'
     run: |
       set -euo pipefail
 
@@ -100,6 +109,13 @@ runs:
       echo "provenance=source" >> "${GITHUB_OUTPUT}"
     shell: bash
     working-directory: ${{ inputs.working-directory }}
+  - name: Seed workflow cache
+    if: success() && steps.workflow-cache.outcome != 'success' && inputs.cache-enabled != 'false'
+    uses: actions/upload-artifact@v7
+    with:
+      name: "${{ steps.prep.outputs.artifact-key }}"
+      path: "${{ steps.prep.outputs.cache-dir }}"
+    continue-on-error: true
   - name: Install
     id: install
     run: |
@@ -119,7 +135,7 @@ runs:
       output_dir="${output_dir:-${gobin:-${gopath}/bin}}"
       mkdir -p "${output_dir}"
       path="${output_dir}/${output}"
-      cp "${cache_dir}/${artifact}" "${path}"
+      install -m 755 "${cache_dir}/${artifact}" "${path}"
 
       echo "installed to: ${path}"
       echo "path=${path}" >> "${GITHUB_OUTPUT}"
