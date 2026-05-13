@@ -27,8 +27,8 @@ See [action.yml](action.yml)
     # The go module's version to install.
     # Default: none
     version: ''
-    # Optional package.
-    # Relative path to the go package within the module to install.
+    # Optional working-directory.
+    # directory containing a go.mod file defining the package's version
     # Default: ''
     working-directory: ''
     # Optional output.

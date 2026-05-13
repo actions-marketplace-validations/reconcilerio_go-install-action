@@ -1,4 +1,7 @@
-name: "go-install-action"
+name: "go-install"
+branding:
+  icon: refresh-cw
+  color: green
 description: "Install a go package"
 inputs:
   package:
