@@ -41,6 +41,15 @@ jobs:
           working-directory: hack/tools
         - tool: github.com/google/go-containerregistry/cmd/crane
           working-directory: hack/tools
+        - package: sigs.k8s.io/kind
+          version: latest
+          binary-url-template: https://github.com/kubernetes-sigs/kind/releases/download/${version}/kind-${os}-${arch}
+          expect-provenance: download
+        - package: github.com/google/go-containerregistry/cmd/crane
+          version: v0.21.7
+          binary-url-template: https://github.com/google/go-containerregistry/releases/download/${version}/go-containerregistry_${os^}_${arch/amd64/x86_64}.tar.gz
+          binary-path-within-archive: crane
+          expect-provenance: download
     runs-on: ${{ matrix.os || 'ubuntu-latest' }}
     steps:
     - uses: actions/checkout@v7
@@ -57,6 +66,8 @@ jobs:
         tool: ${{ matrix.tool }}
         working-directory: ${{ matrix.working-directory }}
         toolchain: ${{ matrix.toolchain }}
+        binary-url-template: ${{ matrix.binary-url-template }}
+        binary-path-within-archive: ${{ matrix.binary-path-within-archive }}
         output: ${{ matrix.output }}
         output-dir: ${{ matrix.output-dir }}
         output-path-env: ${{ matrix.output-path-env }}
@@ -99,18 +110,20 @@ jobs:
       run: |
         set -euo pipefail
 
-        cache_enabled="${{ matrix.cache-enabled }}"
-        cache_enabled="${cache_enabled:-true}"
-        provenance="${{ steps.install.outputs.provenance }}"
+        expect_provenance="${{ matrix.expect-provenance }}"
+        if [[ "${expect_provenance}" == "" ]] ; then
+          cache_enabled="${{ matrix.cache-enabled }}"
+          if [[ "${cache_enabled:-true}" == "true" ]] ; then
+            expect_provenance=cache
+          else
+            expect_provenance=source
+          fi
+        fi
 
-        echo "cache-enabled = ${cache_enabled}"
+        provenance="${{ steps.install.outputs.provenance }}"
         echo "artifact-provenance = ${provenance}"
 
-        if [[ "${cache_enabled}" == "true" && "${provenance}" != "cache" ]] ; then
-          echo "::error title=Expected cache::artifact from ${provenance}, expected to be from cache"
-          exit 1
-        fi
-        if [[ "${cache_enabled}" != "true" && "${provenance}" != "source" ]] ; then
-          echo "::error title=Expected source::artifact from ${provenance}, expected to be from source"
+        if [[ "${expect_provenance}" != "${provenance}" ]] ; then
+          echo "::error title=Expected provenance::artifact from ${provenance}, expected to be from ${expect_provenance}"
           exit 1
         fi
